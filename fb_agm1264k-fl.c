@@ -23,9 +23,6 @@
 
 #include "fbtft.h"
 
-/* Uncomment text line to use negative image on display */
-/*#define NEGATIVE*/
-
 #define WHITE		0xff
 #define BLACK		0
 
@@ -40,7 +37,8 @@
 #define RW			gpio.aux[2]
 #define CS0			gpio.aux[0]
 #define CS1			gpio.aux[1]
-#define USE_DITHERING		gpio.aux[15] /* to store flag */
+#define NEGATIVE	gpio.aux[14] /* to store negative flag */
+#define THRESHOLD	gpio.aux[15]
 
 
 /* diffusing error (“Floyd-Steinberg”) */
@@ -81,12 +79,8 @@ static ssize_t show_convertmode(struct device *device,
 	struct fb_info *fb_info = dev_get_drvdata(device);
 	struct fbtft_par *par = fb_info->par;
 
-	if (par->USE_DITHERING)
-		return snprintf(buf, PAGE_SIZE, "[%s] %s",
-				dithering, threshold);
-	else
-		return snprintf(buf, PAGE_SIZE, "%s [%s]",
-				dithering, threshold);
+	return snprintf(buf, PAGE_SIZE, "%d\n",
+					par->THRESHOLD);
 }
 
 static ssize_t store_convertmode(struct device *device,
@@ -95,28 +89,60 @@ static ssize_t store_convertmode(struct device *device,
 {
 	struct fb_info *fb_info = dev_get_drvdata(device);
 	struct fbtft_par *par = fb_info->par;
+	int res;
 
-	if (strcasecmp(buf, dithering) == 0)
-		par->USE_DITHERING = 1;
-	else if (strcasecmp(buf, threshold) == 0)
-		par->USE_DITHERING = 0;
+	res = kstrtouint(buf, 10, &par->THRESHOLD);
+	if (res)
+		return res;
 	else
-		dev_err(par->info->device,
-			"Incorrect mode setting: %s\n", buf);
-	return count;
+		return count;
 }
 
 static struct device_attribute convertmode_device_attr =
 	__ATTR(convertmode, 0660, show_convertmode, store_convertmode);
 
+static ssize_t show_negativemode(struct device *device,
+                struct device_attribute *attr, char *buf)
+{
+    struct fb_info *fb_info = dev_get_drvdata(device);
+    struct fbtft_par *par = fb_info->par;
+
+    if (par->NEGATIVE)
+        return snprintf(buf, PAGE_SIZE, "1\n");
+    else
+        return snprintf(buf, PAGE_SIZE, "0\n");
+}
+
+static ssize_t store_negativemode(struct device *device,
+                struct device_attribute *attr,
+                const char *buf, size_t count)
+{
+    struct fb_info *fb_info = dev_get_drvdata(device);
+    struct fbtft_par *par = fb_info->par;
+
+    if (buf[0] == '1')
+        par->NEGATIVE = 1;
+    else if (buf[0] == '0')
+        par->NEGATIVE = 0;
+    else
+        dev_err(par->info->device,
+            "Incorrect negative setting: %s\n", buf);
+    return count;
+}
+
+static struct device_attribute negative_mode_device_attr =
+    __ATTR(negative, 0660, show_negativemode, store_negativemode);
+
 static void _sysfs_init(struct fbtft_par *par)
 {
 	device_create_file(par->info->dev, &convertmode_device_attr);
+	device_create_file(par->info->dev, &negative_mode_device_attr);
 }
 
 static void _sysfs_exit(struct fbtft_par *par)
 {
-	device_remove_file(par->info->dev, &convertmode_device_attr);
+    device_remove_file(par->info->dev, &convertmode_device_attr);
+	device_remove_file(par->info->dev, &negative_mode_device_attr);
 }
 
 static int init_display(struct fbtft_par *par)
@@ -124,6 +150,9 @@ static int init_display(struct fbtft_par *par)
 	u8 i;
 
 	fbtft_par_dbg(DEBUG_INIT_DISPLAY, par, "%s()\n", __func__);
+
+	par->THRESHOLD = -1;
+	par->NEGATIVE = 0;
 
 	par->fbtftops.reset(par);
 
@@ -133,8 +162,6 @@ static int init_display(struct fbtft_par *par)
 		write_reg(par, i, 0xb0); /* set page to 0 */
 		write_reg(par, i, 0xc0); /* set start line to 0 */
 	}
-
-	_sysfs_init(par);
 
 	return 0;
 }
@@ -313,11 +340,10 @@ construct_line_bitmap(struct fbtft_par *par, u8 *dest, signed short *src,
 		for (i = 0; i < 8; i++)
 			if (src[(y * 8 + i) * par->info->var.xres + x])
 				res |= 1 << i;
-#ifdef NEGATIVE
-		*dest++ = res;
-#else
-		*dest++ = ~res;
-#endif
+		if(par->NEGATIVE)
+			*dest++ = res;
+		else
+			*dest++ = ~res;
 	}
 }
 
@@ -341,19 +367,24 @@ static int write_vmem(struct fbtft_par *par, size_t offset, size_t len)
 			u16 b = pixel & 0x1f;
 			u16 g = (pixel & (0x3f << 5)) >> 5;
 			u16 r = (pixel & (0x1f << (5 + 6))) >> (5 + 6);
+			signed short new_val;
 
 			pixel = (299 * r + 587 * g + 114 * b) / 200;
 			if (pixel > 255)
 				pixel = 255;
 
 			/* gamma-correction by table */
-			convert_buf[y *  par->info->var.xres + x] =
-				(signed short)gamma_correction_table[pixel];
+			new_val = (signed short)gamma_correction_table[pixel];
+
+			if (par->THRESHOLD > 0)
+				new_val = new_val > par->THRESHOLD ? 1 : 0;
+
+			convert_buf[y *  par->info->var.xres + x] = new_val; 
 		}
 
-	/* Image Dithering */
-	for (x = 0; x < par->info->var.xres; ++x)
-		for (y = 0; y < par->info->var.yres; ++y) {
+	if (par->THRESHOLD < 1) /* Image Dithering */
+		for (x = 0; x < par->info->var.xres; ++x)
+			for (y = 0; y < par->info->var.yres; ++y) {
 			signed short pixel =
 				convert_buf[y *  par->info->var.xres + x];
 			signed short error_b = pixel - BLACK;
@@ -478,7 +509,7 @@ static int write(struct fbtft_par *par, void *buf, size_t len)
 			gpio_set_value(par->gpio.db[i], data & (1 << i));
 		/* set E */
 		gpio_set_value(par->EPIN, 1);
-		udelay(5);
+		udelay(6);
 		/* unset E - write */
 		gpio_set_value(par->EPIN, 0);
 		udelay(1);
@@ -504,7 +535,8 @@ static struct fbtft_display display = {
 	},
 };
 
-#define FBTFT_REGISTER_DRIVER_V_SYS(_name, _compatible, _display, sysfs_unreg) \
+#define FBTFT_REGISTER_DRIVER_V_SYS(_name, _compatible, _display,\
+			sysfs_reg,  sysfs_unreg) 									   \
 									   \
 static int fbtft_driver_probe_spi(struct spi_device *spi)                  \
 {                                                                          \
@@ -520,7 +552,14 @@ static int fbtft_driver_remove_spi(struct spi_device *spi)                 \
 									   \
 static int fbtft_driver_probe_pdev(struct platform_device *pdev)           \
 {                                                                          \
-	return fbtft_probe_common(_display, NULL, pdev);                   \
+	int res = fbtft_probe_common(_display, NULL, pdev);                   \
+	struct fb_info *info;												  \
+									   \
+	if (res)															   \
+		return res;														   \
+	info = platform_get_drvdata(pdev);                 					   \
+	sysfs_reg(info->par);												   \
+	return 0;															   \
 }                                                                          \
 									   \
 static int fbtft_driver_remove_pdev(struct platform_device *pdev)          \
@@ -579,7 +618,7 @@ module_init(fbtft_driver_module_init);                                     \
 module_exit(fbtft_driver_module_exit);
 
 FBTFT_REGISTER_DRIVER_V_SYS(DRVNAME, "displaytronic,fb_agm1264k-fl",
-				&display, _sysfs_exit);
+				&display, _sysfs_init, _sysfs_exit);
 
 MODULE_ALIAS("platform:" DRVNAME);
 
