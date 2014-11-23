@@ -40,6 +40,7 @@
 #define RW			gpio.aux[2]
 #define CS0			gpio.aux[0]
 #define CS1			gpio.aux[1]
+#define USE_DITHERING		gpio.aux[15] /* to store flag */
 
 
 /* diffusing error (“Floyd-Steinberg”) */
@@ -71,6 +72,53 @@ static const unsigned char gamma_correction_table[] = {
 251, 253, 255
 };
 
+static const char dithering[] = "dithering";
+static const char threshold[] = "threshold";
+
+static ssize_t show_convertmode(struct device *device,
+				struct device_attribute *attr, char *buf)
+{
+	struct fb_info *fb_info = dev_get_drvdata(device);
+	struct fbtft_par *par = fb_info->par;
+
+	if (par->USE_DITHERING)
+		return snprintf(buf, PAGE_SIZE, "[%s] %s",
+				dithering, threshold);
+	else
+		return snprintf(buf, PAGE_SIZE, "%s [%s]",
+				dithering, threshold);
+}
+
+static ssize_t store_convertmode(struct device *device,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	struct fb_info *fb_info = dev_get_drvdata(device);
+	struct fbtft_par *par = fb_info->par;
+
+	if (strcasecmp(buf, dithering) == 0)
+		par->USE_DITHERING = 1;
+	else if (strcasecmp(buf, threshold) == 0)
+		par->USE_DITHERING = 0;
+	else
+		dev_err(par->info->device,
+			"Incorrect mode setting: %s\n", buf);
+	return count;
+}
+
+static struct device_attribute convertmode_device_attr =
+	__ATTR(convertmode, 0660, show_convertmode, store_convertmode);
+
+static void _sysfs_init(struct fbtft_par *par)
+{
+	device_create_file(par->info->dev, &convertmode_device_attr);
+}
+
+static void _sysfs_exit(struct fbtft_par *par)
+{
+	device_remove_file(par->info->dev, &convertmode_device_attr);
+}
+
 static int init_display(struct fbtft_par *par)
 {
 	u8 i;
@@ -85,6 +133,8 @@ static int init_display(struct fbtft_par *par)
 		write_reg(par, i, 0xb0); /* set page to 0 */
 		write_reg(par, i, 0xc0); /* set start line to 0 */
 	}
+
+	_sysfs_init(par);
 
 	return 0;
 }
@@ -453,7 +503,83 @@ static struct fbtft_display display = {
 		.write_vmem = write_vmem,
 	},
 };
-FBTFT_REGISTER_DRIVER(DRVNAME, "displaytronic,fb_agm1264k-fl", &display);
+
+#define FBTFT_REGISTER_DRIVER_V_SYS(_name, _compatible, _display, sysfs_unreg) \
+									   \
+static int fbtft_driver_probe_spi(struct spi_device *spi)                  \
+{                                                                          \
+	return fbtft_probe_common(_display, spi, NULL);                    \
+}                                                                          \
+									   \
+static int fbtft_driver_remove_spi(struct spi_device *spi)                 \
+{                                                                          \
+	struct fb_info *info = spi_get_drvdata(spi);                       \
+									   \
+	return fbtft_remove_common(&spi->dev, info);                       \
+}                                                                          \
+									   \
+static int fbtft_driver_probe_pdev(struct platform_device *pdev)           \
+{                                                                          \
+	return fbtft_probe_common(_display, NULL, pdev);                   \
+}                                                                          \
+									   \
+static int fbtft_driver_remove_pdev(struct platform_device *pdev)          \
+{                                                                          \
+	struct fb_info *info = platform_get_drvdata(pdev);                 \
+									   \
+	sysfs_unreg(info->par);						   \
+	return fbtft_remove_common(&pdev->dev, info);                      \
+}                                                                          \
+									   \
+static const struct of_device_id dt_ids[] = {                              \
+		{ .compatible = _compatible },                             \
+		{},                                                        \
+};                                                                         \
+									   \
+MODULE_DEVICE_TABLE(of, dt_ids);                                           \
+									   \
+									   \
+static struct spi_driver fbtft_driver_spi_driver = {                       \
+	.driver = {                                                        \
+		.name   = _name,                                           \
+		.owner  = THIS_MODULE,                                     \
+		.of_match_table = of_match_ptr(dt_ids),                    \
+	},                                                                 \
+	.probe  = fbtft_driver_probe_spi,                                  \
+	.remove = fbtft_driver_remove_spi,                                 \
+};                                                                         \
+									   \
+static struct platform_driver fbtft_driver_platform_driver = {             \
+	.driver = {                                                        \
+		.name   = _name,                                           \
+		.owner  = THIS_MODULE,                                     \
+		.of_match_table = of_match_ptr(dt_ids),                    \
+	},                                                                 \
+	.probe  = fbtft_driver_probe_pdev,                                 \
+	.remove = fbtft_driver_remove_pdev,                                \
+};                                                                         \
+									   \
+static int __init fbtft_driver_module_init(void)                           \
+{                                                                          \
+	int ret;                                                           \
+									   \
+	ret = spi_register_driver(&fbtft_driver_spi_driver);               \
+	if (ret < 0)                                                       \
+		return ret;                                                \
+	return platform_driver_register(&fbtft_driver_platform_driver);	   \
+}                                                                          \
+									   \
+static void __exit fbtft_driver_module_exit(void)                          \
+{                                                                          \
+	spi_unregister_driver(&fbtft_driver_spi_driver);                   \
+	platform_driver_unregister(&fbtft_driver_platform_driver);         \
+}                                                                          \
+									   \
+module_init(fbtft_driver_module_init);                                     \
+module_exit(fbtft_driver_module_exit);
+
+FBTFT_REGISTER_DRIVER_V_SYS(DRVNAME, "displaytronic,fb_agm1264k-fl",
+				&display, _sysfs_exit);
 
 MODULE_ALIAS("platform:" DRVNAME);
 
