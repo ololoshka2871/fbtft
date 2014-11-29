@@ -298,24 +298,27 @@ static struct fbtft_device_display displays[] = {
 					.backlight = FBTFT_ONBOARD_BACKLIGHT,
 				},
 				.gpios = (const struct fbtft_gpio []) {
-					/* for my Beaglebone Black
-					{ "reset", 48 },
-					{ "wr", 60 },  // aka E
-					{ "dc", 112 }, // aka D/I
-					{ "rw", 113 },
-					{ "cs0", 49 },
-					{ "cs1", 117 },
-					{ "db00", 66 },
-					{ "db01", 69 },
-					{ "db02", 45 },
-					{ "db03", 67 },
-					{ "db04", 68 },
-					{ "db05", 44 },
-					{ "db06", 26 },
-					{ "db07", 65 },*/
 					{},
 				},
 			},
+			}
+		}
+	}, {
+		.name = "dogs102",
+		.spi = &(struct spi_board_info) {
+			.modalias = "fb_uc1701",
+			.max_speed_hz = 8000000,
+			.mode = SPI_MODE_0,
+			.platform_data = &(struct fbtft_platform_data) {
+				.display = {
+					.buswidth = 8,
+				},
+				.bgr = true,
+				.gpios = (const struct fbtft_gpio []) {
+					{ "reset", 13 },
+					{ "dc", 6 },
+					{},
+				},
 			}
 		}
 	}, {
