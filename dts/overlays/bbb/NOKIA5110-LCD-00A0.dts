@@ -1,0 +1,88 @@
+/*
+* Copyright (C) 2014 ololoshka2871
+* Based on NEOSEC-TINYLCD35-00A0.dts by Noralf Tronnes
+*
+* nokia5110_lcd
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*/ 
+
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "ti,beaglebone", "ti,beaglebone-black";
+
+    /* identification */
+    part-number = "NOKIA5110-LCD";
+
+    /* version */
+    version = "00A0";
+
+    /* state the resources this cape uses */
+    exclusive-use =
+        /* the pin header uses */
+		"P9.31", /* spi1_sclk */
+		"P9.29", /* spi1_d0 MISO */
+		"P9.30", /* spi1_d1 MOSI */
+		"P9.28", /* spi1_cs0 */ 
+       	"P9.11", /* gpio0_30 - reset */
+		"P9.12", /* gpio1_28 - dc */ 
+		"P9.13", /* gpio0_31 - led */ 
+        "spi1";
+
+    fragment@0 {
+        target = <&am33xx_pinmux>;
+        __overlay__ {
+            bb_spi1_pins: pinmux_bb_spi1_pins {
+                pinctrl-single,pins = <                                        
+                    0x190 0x13    /* P9_31 = mcasp0_aclkx.spi1_sclk , OUTPUT_PULLUP | MODE3 */
+                    0x194 0x33    /* P9_29 = mcasp0_fsx.spi1_d0     , INPUT_PULLUP  | MODE3 */
+                    0x198 0x13    /* P9_30 = mcasp0_axr0.spi1_d1    , OUTPUT_PULLUP | MODE3 */
+                    0x19c 0x13    /* P9_28 = mcasp0_ahclkr.spi1_cs0 , OUTPUT_PULLUP | MODE3 */                    
+                >;
+			}; 
+            lcd_ctrl_pinmux: lcd_ctrl_pins {
+				pinctrl-single,pins = <
+					0x070 0x17 /* P9.11 gpio0_30 OUTPUT_PULLUP | MODE7 */
+					0x078 0x17 /* P9.12 gpio1_28 OUTPUT_PULLUP | MODE7 */
+					0x074 0x07 /* P9.13 gpio0_31 INPUT_PULLUP  | MODE7  */
+				>;
+            };
+        };
+    };
+    
+    fragment@1 {
+		target = <&spi1>;
+		__overlay__ {
+			status = "okay";
+			pinctrl-names = "default";
+			pinctrl-0 = <&bb_spi1_pins>;
+ 
+			#address-cells = <1>;
+			#size-cells = <0>;
+ 
+			nokia5110_lcd@0{
+				compatible = "ilitek,ili9163";
+				reg = <0>;
+ 
+				pinctrl-names = "default";
+				pinctrl-0 = <&lcd_ctrl_pinmux>;
+ 
+				spi-max-frequency = <48000000>;
+				rotate = <0>;
+				bgr;
+				fps = <10>;
+				buswidth = <8>;
+				reset-gpios = <&gpio1 30 0>;
+				dc-gpios = <&gpio2 28 0>;
+				led-gpios = <&gpio1 31 0>;
+ 
+				debug = <3>;
+			};
+		};
+	}; 
+
+};
