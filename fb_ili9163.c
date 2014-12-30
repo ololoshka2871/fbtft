@@ -29,7 +29,7 @@
 #define WIDTH			128
 #define HEIGHT			128
 #define BPP				16
-#define FPS				20
+#define FPS				30
 
 #ifdef GAMMA_ADJ
 #define GAMMA_LEN		15

@@ -28,7 +28,7 @@
 		"P9.29", /* spi1_d0 MISO */
 		"P9.30", /* spi1_d1 MOSI */
 		"P9.28", /* spi1_cs0 */
-       	"P9.11", /* gpio0_30 - reset */
+		"P9.11", /* gpio0_30 - reset */
 		"P9.12", /* gpio1_28 - dc */
 		"P9.15", /* gpio1_16 - led */
 		"P9.14", /* backlight */
