@@ -3,7 +3,8 @@
  *
  * Copyright (C) 2014 ololoshka2871
  *
- * Based on ili9325.c by Noralf Tronnes
+ * Based on ili9325.c by Noralf Tronnes and
+ * .S.U.M.O.T.O.Y. by Max MC Costa (https://github.com/sumotoy/TFT_ILI9163C).
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,62 +25,62 @@
 
 #include "fbtft.h"
 
-#define DRVNAME		"fb_ili9163"
-#define WIDTH		128
-#define HEIGHT		128
-#define BPP			16
-#define FPS			20
+#define DRVNAME			"fb_ili9163"
+#define WIDTH			128
+#define HEIGHT			128
+#define BPP				16
+#define FPS				20
 
 #ifdef GAMMA_ADJ
-#define GAMMA_LEN	15
-#define GAMMA_NUM	1
+#define GAMMA_LEN		15
+#define GAMMA_NUM		1
 #define DEFAULT_GAMMA	"36 29 12 22 1C 15 42 B7 2F 13 12 0A 11 0B 06\n"
 #endif
 
- /* ILI9163C commands */
-#define CMD_NOP     	0x00 /* Non operation*/
-#define CMD_SWRESET 	0x01 /* Soft Reset */
-#define CMD_SLPIN   	0x10 /* Sleep ON */
-#define CMD_SLPOUT  	0x11 /* Sleep OFF */
-#define CMD_PTLON   	0x12 /* Partial Mode ON */
-#define CMD_NORML   	0x13 /* Normal Display ON */
-#define CMD_DINVOF  	0x20 /* Display Inversion OFF */
-#define CMD_DINVON   	0x21 /* Display Inversion ON */
-#define CMD_GAMMASET 	0x26 /* Gamma Set (0x01[1],0x02[2],0x04[3],0x08[4]) */
-#define CMD_DISPOFF 	0x28 /* Display OFF */
-#define CMD_DISPON  	0x29 /* Display ON */
-#define CMD_IDLEON  	0x39 /* Idle Mode ON */
-#define CMD_IDLEOF  	0x38 /* Idle Mode OFF */
-#define CMD_CLMADRS   	0x2A /* Column Address Set */
-#define CMD_PGEADRS   	0x2B /* Page Address Set */
+/* ILI9163C commands */
+#define CMD_NOP			0x00 /* Non operation*/
+#define CMD_SWRESET		0x01 /* Soft Reset */
+#define CMD_SLPIN		0x10 /* Sleep ON */
+#define CMD_SLPOUT		0x11 /* Sleep OFF */
+#define CMD_PTLON		0x12 /* Partial Mode ON */
+#define CMD_NORML		0x13 /* Normal Display ON */
+#define CMD_DINVOF		0x20 /* Display Inversion OFF */
+#define CMD_DINVON		0x21 /* Display Inversion ON */
+#define CMD_GAMMASET	0x26 /* Gamma Set (0x01[1],0x02[2],0x04[3],0x08[4]) */
+#define CMD_DISPOFF		0x28 /* Display OFF */
+#define CMD_DISPON		0x29 /* Display ON */
+#define CMD_IDLEON		0x39 /* Idle Mode ON */
+#define CMD_IDLEOF		0x38 /* Idle Mode OFF */
+#define CMD_CLMADRS		0x2A /* Column Address Set */
+#define CMD_PGEADRS		0x2B /* Page Address Set */
 
-#define CMD_RAMWR   	0x2C /* Memory Write */
-#define CMD_RAMRD   	0x2E /* Memory Read */
-#define CMD_CLRSPACE   	0x2D /* Color Space : 4K/65K/262K */
+#define CMD_RAMWR		0x2C /* Memory Write */
+#define CMD_RAMRD		0x2E /* Memory Read */
+#define CMD_CLRSPACE	0x2D /* Color Space : 4K/65K/262K */
 #define CMD_PARTAREA	0x30 /* Partial Area */
 #define CMD_VSCLLDEF	0x33 /* Vertical Scroll Definition */
 #define CMD_TEFXLON		0x34 /* Tearing Effect Line ON */
 #define CMD_TEFXLOF		0x35 /* Tearing Effect Line OFF */
-#define CMD_MADCTL  	0x36 /* Memory Access Control */
+#define CMD_MADCTL		0x36 /* Memory Access Control */
 
-#define CMD_PIXFMT  	0x3A /* Interface Pixel Format */
-#define CMD_FRMCTR1 	0xB1 /* Frame Rate Control (In normal mode/Full colors) */
-#define CMD_FRMCTR2 	0xB2 /* Frame Rate Control(In Idle mode/8-colors) */
-#define CMD_FRMCTR3 	0xB3 /* Frame Rate Control(In Partial mode/full colors) */
+#define CMD_PIXFMT		0x3A /* Interface Pixel Format */
+#define CMD_FRMCTR1		0xB1 /* Frame Rate Control (In normal mode/Full colors) */
+#define CMD_FRMCTR2		0xB2 /* Frame Rate Control(In Idle mode/8-colors) */
+#define CMD_FRMCTR3		0xB3 /* Frame Rate Control(In Partial mode/full colors) */
 #define CMD_DINVCTR		0xB4 /* Display Inversion Control */
 #define CMD_RGBBLK		0xB5 /* RGB Interface Blanking Porch setting */
-#define CMD_DFUNCTR 	0xB6 /* Display Fuction set 5 */
-#define CMD_SDRVDIR 	0xB7 /* Source Driver Direction Control */
-#define CMD_GDRVDIR 	0xB8 /* Gate Driver Direction Control  */
+#define CMD_DFUNCTR		0xB6 /* Display Fuction set 5 */
+#define CMD_SDRVDIR		0xB7 /* Source Driver Direction Control */
+#define CMD_GDRVDIR		0xB8 /* Gate Driver Direction Control  */
 
-#define CMD_PWCTR1  	0xC0 /* Power_Control1 */
-#define CMD_PWCTR2  	0xC1 /* Power_Control2 */
-#define CMD_PWCTR3  	0xC2 /* Power_Control3 */
-#define CMD_PWCTR4  	0xC3 /* Power_Control4 */
-#define CMD_PWCTR5  	0xC4 /* Power_Control5 */
-#define CMD_VCOMCTR1  	0xC5 /* VCOM_Control 1 */
-#define CMD_VCOMCTR2  	0xC6 /* VCOM_Control 2 */
-#define CMD_VCOMOFFS  	0xC7 /* VCOM Offset Control */
+#define CMD_PWCTR1		0xC0 /* Power_Control1 */
+#define CMD_PWCTR2		0xC1 /* Power_Control2 */
+#define CMD_PWCTR3		0xC2 /* Power_Control3 */
+#define CMD_PWCTR4		0xC3 /* Power_Control4 */
+#define CMD_PWCTR5		0xC4 /* Power_Control5 */
+#define CMD_VCOMCTR1	0xC5 /* VCOM_Control 1 */
+#define CMD_VCOMCTR2	0xC6 /* VCOM_Control 2 */
+#define CMD_VCOMOFFS	0xC7 /* VCOM Offset Control */
 #define CMD_PGAMMAC		0xE0 /* Positive Gamma Correction Setting */
 #define CMD_NGAMMAC		0xE1 /* Negative Gamma Correction Setting */
 #define CMD_GAMRSEL		0xF2 /* GAM_R_SEL */
@@ -109,13 +110,13 @@ static int init_display(struct fbtft_par *par)
 
 	if (par->gpio.cs != -1)
 		gpio_set_value(par->gpio.cs, 0);  /* Activate chip */
-	
+
 	write_reg(par, CMD_SWRESET); /* software reset */
 	mdelay(500);
 	write_reg(par, CMD_SLPOUT); /* exit sleep */
 	mdelay(5);
 	write_reg(par, CMD_PIXFMT, 0x05); /* Set Color Format 16bit */
-	write_reg(par, CMD_GAMMASET, 0x04); /* default gamma curve 3 */
+	write_reg(par, CMD_GAMMASET, 0x02); /* default gamma curve 3 */
 #ifdef GAMMA_ADJ
 	write_reg(par, CMD_GAMRSEL, 0x01); /* Enable Gamma adj */
 #endif
@@ -125,10 +126,10 @@ static int init_display(struct fbtft_par *par)
 	write_reg(par, CMD_DINVCTR, 0x07); /* display inversion  */
 	write_reg(par, CMD_PWCTR1, 0x0A, 0x02); /* Set VRH1[4:0] & VC[2:0] for VCI1 & GVDD */
 	write_reg(par, CMD_PWCTR2, 0x02); /* Set BT[2:0] for AVDD & VCL & VGH & VGL  */
-	write_reg(par, CMD_VCOMCTR1, 0x50, 99); /* Set VMH[6:0] & VML[6:0] for VOMH & VCOML */ 
+	write_reg(par, CMD_VCOMCTR1, 0x50, 0x63); /* Set VMH[6:0] & VML[6:0] for VOMH & VCOML */
 	write_reg(par, CMD_VCOMOFFS, 0);
-  
-	write_reg(par, CMD_CLMADRS, 0, 0, 0, WIDTH); /* Set Column Address */ 
+
+	write_reg(par, CMD_CLMADRS, 0, 0, 0, WIDTH); /* Set Column Address */
 	write_reg(par, CMD_PGEADRS, 0, 0, 0, HEIGHT); /* Set Page Address */
 
 	write_reg(par, CMD_DISPON); /* display ON */
@@ -141,60 +142,87 @@ static void set_addr_win(struct fbtft_par *par, int xs, int ys, int xe, int ye)
 {
 	fbtft_par_dbg(DEBUG_SET_ADDR_WIN, par,
 		"%s(xs=%d, ys=%d, xe=%d, ye=%d)\n", __func__, xs, ys, xe, ye);
-		
+
 	switch (par->info->var.rotate) {
 	case 0:
-		write_reg(par, CMD_CLMADRS, xs, xe);
-		write_reg(par, CMD_PGEADRS, ys + __OFFSET, ye + __OFFSET);
+		write_reg(par, CMD_CLMADRS, xs >> 8, xs & 0xff, xe >> 8, xe & 0xff);
+		write_reg(par, CMD_PGEADRS,
+					(ys + __OFFSET) >> 8, (ys + __OFFSET) & 0xff,
+					(ye + __OFFSET) >> 8, (ye + __OFFSET) & 0xff);
 		break;
 	case 90:
-		write_reg(par, CMD_CLMADRS, xs + __OFFSET, xe + __OFFSET);
-		write_reg(par, CMD_PGEADRS, ys, ye);
-		break;	
+		write_reg(par, CMD_CLMADRS,
+					(xs + __OFFSET) >> 8, (xs + __OFFSET) & 0xff,
+					(xe + __OFFSET) >> 8, (xe + __OFFSET) & 0xff);
+		write_reg(par, CMD_PGEADRS, ys >> 8, ys & 0xff, ye >> 8, ye & 0xff);
+		break;
 	case 180:
 	case 270:
-		write_reg(par, CMD_CLMADRS, xs, xe);
-		write_reg(par, CMD_PGEADRS, ys, ye);
+		write_reg(par, CMD_CLMADRS, xs >> 8, xs & 0xff, xe >> 8, xe & 0xff);
+		write_reg(par, CMD_PGEADRS, ys >> 8, ys & 0xff, ye >> 8, ye & 0xff);
 		break;
+	default:
+		par->info->var.rotate = 0; /* Fix incorrect setting */
 	}
-	write_reg(par, CMD_RAMWR); /* Write Data to GRAM */
+	write_reg(par, CMD_RAMWR); /* Write Data to GRAM mode */
 }
 
 static int set_var(struct fbtft_par *par)
 {
-	u8 _Mactrl_Data = 0;
+/*
+7) MY:  1(bottom to top),	0(top to bottom)	Row Address Order
+6) MX:  1(R to L),			0(L to R)			Column Address Order
+5) MV:  1(Exchanged),		0(normal)			Row/Column exchange
+4) ML:  1(bottom to top),	0(top to bottom)	Vertical Refresh Order
+3) RGB: 1(BGR),				0(RGB)			Color Space
+2) MH:  1(R to L),			0(L to R)			Horizontal Refresh Order
+1)
+0)
+
+    MY, MX, MV, ML,RGB, MH, D1, D0
+	0 | 0 | 0 | 0 | 1 | 0 | 0 | 0	//normal
+	1 | 0 | 0 | 0 | 1 | 0 | 0 | 0	//Y-Mirror
+	0 | 1 | 0 | 0 | 1 | 0 | 0 | 0	//X-Mirror
+	1 | 1 | 0 | 0 | 1 | 0 | 0 | 0	//X-Y-Mirror
+	0 | 0 | 1 | 0 | 1 | 0 | 0 | 0	//X-Y Exchange
+	1 | 0 | 1 | 0 | 1 | 0 | 0 | 0	//X-Y Exchange, Y-Mirror
+	0 | 1 | 1 | 0 | 1 | 0 | 0 | 0	//XY exchange
+	1 | 1 | 1 | 0 | 1 | 0 | 0 | 0
+*/
+
+	u8 mactrl_data = 0; /* Avoid compiler warning */
 
 	fbtft_par_dbg(DEBUG_INIT_DISPLAY, par, "%s()\n", __func__);
-	
+
 	switch (par->info->var.rotate) {
 	case 0:
-		_Mactrl_Data = 0x08;
+		mactrl_data = 0x08;
 		break;
 	case 180:
-		_Mactrl_Data = 0xC8;
+		mactrl_data = 0xC8;
 		break;
 	case 270:
-		_Mactrl_Data = 0xA8;
+		mactrl_data = 0xA8;
 		break;
 	case 90:
-		_Mactrl_Data = 0x68;
+		mactrl_data = 0x68;
 		break;
 	}
-	
+
 	/* Colorspcae */
 	if (par->bgr)
-		_Mactrl_Data |= (1 << 2);
-	write_reg(par, CMD_MADCTL, _Mactrl_Data);
-	write_reg(par, CMD_RAMWR); /* Write Data to GRAM */
+		mactrl_data |= (1 << 2);
+	write_reg(par, CMD_MADCTL, mactrl_data);
+	write_reg(par, CMD_RAMWR); /* Write Data to GRAM mode */
 	return 0;
 }
 
-#ifdef GAMMA_ADJ  
+#ifdef GAMMA_ADJ
 #define CURVE(num, idx)  curves[num*par->gamma.num_values + idx]
 static int gamma_adj(struct fbtft_par *par, unsigned long *curves)
 {
 	unsigned long mask[] = {
-		0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 
+		0x3F, 0x3F, 0x3F, 0x3F, 0x3F,
 		0x1f, 0x3f, 0x0f, 0x0f, 0x7f, 0x1f,
 		0x3F, 0x3F, 0x3F, 0x3F, 0x3F};
 	int i, j;
@@ -205,7 +233,7 @@ static int gamma_adj(struct fbtft_par *par, unsigned long *curves)
 		for (j = 0; j < GAMMA_LEN; j++)
 			CURVE(i, j) &= mask[i*par->gamma.num_values + j];
 
-	write_reg(par, CMD_PGAMMAC, 
+	write_reg(par, CMD_PGAMMAC,
 				CURVE(0, 0),
 				CURVE(0, 1),
 				CURVE(0, 2),
@@ -222,15 +250,16 @@ static int gamma_adj(struct fbtft_par *par, unsigned long *curves)
 				CURVE(0, 14),
 				CURVE(0, 15)
 				);
-	write_reg(par, CMD_RAMWR); /* Write Data to GRAM */
-	
+
+	write_reg(par, CMD_RAMWR); /* Write Data to GRAM mode */
+
 	return 0;
 }
 #undef CURVE
 #endif
 
 static struct fbtft_display display = {
-	.regwidth = 16,
+	.regwidth = 8,
 	.width = WIDTH,
 	.height = HEIGHT,
 	.bpp = BPP,
@@ -246,9 +275,10 @@ static struct fbtft_display display = {
 		.set_var = set_var,
 #ifdef GAMMA_ADJ
 		.set_gamma = gamma_adj,
-#endif		
+#endif
 	},
 };
+
 FBTFT_REGISTER_DRIVER(DRVNAME, "ilitek,ili9163", &display);
 
 MODULE_ALIAS("spi:" DRVNAME);
